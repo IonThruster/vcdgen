@@ -3,7 +3,7 @@ A single header c++ library for VCD file generation
 
 ### Getting started
 ```
-makdir build
+mkdir build
 cd build
 cmake ..
 make
