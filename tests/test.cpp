@@ -81,5 +81,3 @@ int main()
 	test_002();
 	return 0;
 }
-
-
