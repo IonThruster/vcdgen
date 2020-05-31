@@ -98,9 +98,19 @@ namespace VcdGen
         }
 
         /// Updates what symbol to use for the next Signal
+        ///
+        /// Ensure that the it will be a unique symbol name
         void update_next_symbol()
         {
+            ++st_idx;
+            if( st_idx == symbol_chars.size() )
+            {
+                st_idx = 0;
+                ++st_repeats;
+            }
+
             next_symbol = "";
+
             for( size_t cnt = 0; cnt < st_repeats; cnt++)
             {
                 next_symbol += symbol_chars[st_idx];    
@@ -136,19 +146,10 @@ namespace VcdGen
             if ( signal_symbol_map.count(signal_name) == 0 ) {
 
                 signal_symbol_map[signal_name] = next_symbol;
-
                 signal_width_map[signal_name] = width;
 
-                ++st_idx;
-
-                if( st_idx == symbol_chars.size() )
-                {
-                    st_idx = 0;
-                    ++st_repeats;
-                }
-
+                // This makes ready the next symbol to use
                 update_next_symbol();
-
             } else {
                 std::cout << "ERROR : Signal already Registerd" << std::endl;
                 exit(0);
