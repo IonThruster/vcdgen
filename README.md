@@ -1,6 +1,8 @@
 # VCDGEN
 A single header c++ library for VCD file generation
 
+![Sample VCD waveform](images/example_vcd_screenshot.png)
+
 ### Getting started
 ```
 mkdir build
