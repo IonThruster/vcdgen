@@ -1,6 +1,7 @@
 #include "vcdgen.h"
+#include "utils.h"
 
-void test_001()
+bool test_001()
 {
   VcdGen::VcdGenerator v;
 
@@ -13,22 +14,24 @@ void test_001()
   v.end_all_module_definitions();
 
   v.dump_time(0);
-    v.dump_signal("data", "00000000");
-    v.dump_signal("data_valid", "0");
-    v.dump_signal("en", "0");
+    v.dump_signal("logic_data", "00000000");
+    v.dump_signal("logic_data_valid", "0");
+    v.dump_signal("logic_en", "0");
   v.dump_time(100);
-    v.dump_signal("data", "01010101");
-    v.dump_signal("data_valid", "1");
-    v.dump_signal("en", "1");
+    v.dump_signal("logic_data", "01010101");
+    v.dump_signal("logic_data_valid", "1");
+    v.dump_signal("logic_en", "1");
   v.dump_time(110);
-    v.dump_signal("data", "00000000");
-    v.dump_signal("data_valid", "0");
-    v.dump_signal("en", "0");
+    v.dump_signal("logic_data", "00000000");
+    v.dump_signal("logic_data_valid", "0");
+    v.dump_signal("logic_en", "0");
 
+  v.set_filename("test_001.vcd");
   v.dump_vcd();
+  return compare_files("test_001.vcd", "tests/golden/test_001_golden.vcd");
 }
 
-void test_002()
+bool test_002()
 {
   VcdGen::VcdGenerator v;
 
@@ -72,12 +75,24 @@ void test_002()
     v.dump_signal("MAIN_SUB_COMP_data", "00000000");
     v.dump_signal("MAIN_SUB_COMP_data_valid", "0");
     v.dump_signal("MAIN_SUB_COMP_en", "0");
+
+  v.set_filename("test_002.vcd");
   v.dump_vcd();
+  return compare_files("test_002.vcd", "tests/golden/test_002_golden.vcd");
+}
+
+void print_result(std::string test_name, bool result)
+{
+    if( result) {
+        std::cout << "SUCCESS : " << test_name << std::endl;
+    } else {
+        std::cout << "FAILED : " << test_name << std::endl;
+    }
 }
 
 int main()
 {
-	// test_001();
-	test_002();
+    print_result("test_001", test_001());
+    print_result("test_002", test_002());
 	return 0;
 }
