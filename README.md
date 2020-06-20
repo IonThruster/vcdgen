@@ -9,10 +9,10 @@ mkdir build
 cd build
 cmake ..
 make
-./tests/vcdgen_tester > sample.vcd
-gtkwave sample.vcd
+./tests/vcdgen_tester
+gtkwave test_001.vcd
 ```
-This should dump to the console a simple VCD file which can be viewed on Open-Source waveform viewers like gtkwave
+Note gtkwave is an Open-Source waveform viewer, which should be downloaded separately.
 
 ### Dependencies
 * cmake 3.10.0+
