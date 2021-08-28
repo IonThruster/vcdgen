@@ -1,98 +1,39 @@
 #include "vcdgen.h"
-#include "utils.h"
+#include <iostream>
 
-bool test_001()
-{
-  VcdGen::VcdGenerator v;
-
-  v.start_module("logic");
-    v.add_signal("data", 8);
-    v.add_signal("data_valid", 1);
-    v.add_signal("en", 1);
-  v.end_module();
-
-  v.end_all_module_definitions();
-
-  v.dump_time(0);
-    v.dump_signal("logic_data", "00000000");
-    v.dump_signal("logic_data_valid", "0");
-    v.dump_signal("logic_en", "0");
-  v.dump_time(100);
-    v.dump_signal("logic_data", "01010101");
-    v.dump_signal("logic_data_valid", "1");
-    v.dump_signal("logic_en", "1");
-  v.dump_time(110);
-    v.dump_signal("logic_data", "00000000");
-    v.dump_signal("logic_data_valid", "0");
-    v.dump_signal("logic_en", "0");
-
-  v.set_filename("test_001.vcd");
-  v.dump_vcd();
-  return compare_files("test_001.vcd", "tests/golden/test_001_golden.vcd");
-}
-
-bool test_002()
-{
-  VcdGen::VcdGenerator v;
-
-  v.start_module("MAIN");
-    v.add_signal("data", 8);
-    v.add_signal("data_valid", 1);
-    v.add_signal("en", 1);
-
-  	v.start_module("SUB_COMP");
-    	v.add_signal("data", 8);
-    	v.add_signal("data_valid", 1);
-    	v.add_signal("en", 1);
-  	v.end_module();
-
-  v.end_module();
-
-  v.end_all_module_definitions();
-
-  v.dump_time(0);
-    v.dump_signal("MAIN_data", "00000000");
-    v.dump_signal("MAIN_data_valid", "0");
-    v.dump_signal("MAIN_en", "0");
-
-    v.dump_signal("MAIN_SUB_COMP_data", "00000000");
-    v.dump_signal("MAIN_SUB_COMP_data_valid", "0");
-    v.dump_signal("MAIN_SUB_COMP_en", "0");
-  v.dump_time(100);
-    v.dump_signal("MAIN_data", "01010101");
-    v.dump_signal("MAIN_data_valid", "1");
-    v.dump_signal("MAIN_en", "1");
-
-    v.dump_signal("MAIN_SUB_COMP_data", "11111111");
-    v.dump_signal("MAIN_SUB_COMP_data_valid", "1");
-    v.dump_signal("MAIN_SUB_COMP_en", "1");
-  v.dump_time(110);
-    v.dump_signal("MAIN_data", "00000000");
-    v.dump_signal("MAIN_data_valid", "0");
-    v.dump_signal("MAIN_en", "0");
-
-  v.dump_time(150);
-    v.dump_signal("MAIN_SUB_COMP_data", "00000000");
-    v.dump_signal("MAIN_SUB_COMP_data_valid", "0");
-    v.dump_signal("MAIN_SUB_COMP_en", "0");
-
-  v.set_filename("test_002.vcd");
-  v.dump_vcd();
-  return compare_files("test_002.vcd", "tests/golden/test_002_golden.vcd");
-}
-
-void print_result(std::string test_name, bool result)
-{
-    if( result) {
-        std::cout << "SUCCESS : " << test_name << std::endl;
-    } else {
-        std::cout << "FAILED : " << test_name << std::endl;
-    }
-}
+using namespace std;
 
 int main()
 {
-    print_result("test_001", test_001());
-    print_result("test_002", test_002());
-	return 0;
+
+    // Single instance which generates the VCD
+    VcdGen::VcdGenerator gen("test_001.vcd");
+
+    // Hierachy contains modules
+    VcdGen::Module Logic {"Logic"};
+    VcdGen::Module SubMod {"SubMod"};
+
+    // Modules can be heirarchical
+    Logic.add_submodule( &SubMod ) ;
+
+    // Connect things up
+    gen.set_top_level_module( &Logic );
+    
+    // Create Signals : format Signal var{Name, Width};
+    VcdGen::Signal data  { "data"  , 8  };
+    VcdGen::Signal valid { "valid" , 1  };
+    VcdGen::Signal wr_en { "wr_en" , 1  };
+    VcdGen::Signal dummy { "dummy" , 16 };
+
+    // Add Signals to the module / submodule
+    SubMod.add_signal( {&data, &valid, &wr_en} );
+    Logic.add_signal( &dummy );
+
+    // Set values for the signals
+    data.value_at(  {{0, 0}, {100, 85}, {110, 0}, {150, 0}} );
+    valid.value_at( {{0, 0}, {100, 1} , {110, 0}, {150, 0}} );
+    wr_en.value_at( {{0, 0}, {100, 1} , {110, 0}, {150, 0}} );
+    dummy.value_at( {{0, 0}, {100, 11}, {110, 0}, {150, 0}} );
+    
+    gen();
 }

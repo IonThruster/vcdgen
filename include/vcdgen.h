@@ -1,300 +1,330 @@
 /*
 ##################################################################################################
-VCG Waveform Generation library in c++
+VCG Waveform Generation library
 
-Copyright (c) 2019 - 2020, Pradeep Ramani
+Copyright (c) 2021 Pradeep Ramani
 
-Permission is hereby granted, free of charge, to any person obtaining
-a copy of this software and associated documentation files (the
-"Software"), to deal in the Software without restriction, including
-without limitation the rights to use, copy, modify, merge, publish,
-distribute, sublicense, and/or sell copies of the Software, and to
-permit persons to whom the Software is furnished to do so, subject to
-the following conditions:
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and 
+associated documentation files (the "Software"), to deal in the Software without restriction, 
+including without limitation the rights to use, copy, modify, merge, publish, distribute, 
+sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is 
+furnished to do so, subject to the following conditions:
 
-The above copyright notice and this permission notice shall be
-included in all copies or substantial portions of the Software.
+The above copyright notice and this permission notice shall be included in all copies or 
+substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
-LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
-WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING 
+BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND 
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, 
+DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, 
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
---- Optional exception to the license ---
-
-As an exception, if, as a result of your compiling your source code, portions
-of this Software are embedded into a machine-executable object form of such
-source code, you may redistribute such embedded portions in such object form
-without including the above copyright and permission notices.
 ##################################################################################################
 */
 
-#pragma once
-
 #include <iostream>
-#include <map>
-#include <cstdint>
+#include <string>
 #include <vector>
-#include <array>
+#include <tuple>
 #include <fstream>
+#include <algorithm>
+#include <bitset>
+#include <cassert>
 
+#pragma once
 //////////////////////////////////////////////////////////////////////////////////////////////////
 namespace VcdGen
 {
 //////////////////////////////////////////////////////////////////////////////////////////////////
 
-    class VcdGenerator
+using namespace std;
+
+// Forward Declaration
+// Denotes the signal we intend to plot
+class Signal;
+
+// Stores the Tuple (Time, value, Signal*)
+class TickData{
+
+    using Type = vector<tuple<uint64_t, uint32_t, const Signal*>>;
+ 
+    Type tick_data_;
+
+public:
+    TickData() = default;
+
+    void append(tuple<uint64_t, uint32_t, const Signal*> data){
+        tick_data_.push_back(data);
+    }
+
+    void append(tuple<uint64_t, uint32_t> data, const Signal* signal){
+        auto tmp = make_tuple(get<0>(data), get<1>(data), signal);
+        this->append(tmp);
+    }
+
+    void append(vector<tuple<uint64_t, uint32_t>> data, const Signal* signal){
+        for( auto& d : data ){
+            this->append(d, signal);
+        }
+    }
+
+    Type& get_data(){
+        return tick_data_;
+    }
+};
+
+// Singleton to get the tick data
+static TickData& get_tick_data(){
+    static TickData tick_data{};
+    return tick_data;
+}
+
+// Generates a unique encoded string using a integer
+// Every digit in the integer represents one of these characters
+string encode_signal_name(uint32_t index){
+    vector<char> symbols_ = {'!', '@', '#', '$', '%', '^', '&', '*', '(', ')'};
+    string ret_val;
+    if( index == 0 ){
+        ret_val = symbols_[0];
+    } else {
+        while( index > 0 ){
+            int digit = index % 10;
+            ret_val += symbols_[digit];
+            index /= 10;
+        }
+    }
+    return ret_val;
+}
+
+// Represents the entity we wish to plot / dump as VCD
+class Signal{
+
+    // Name of the signal
+    string name_;
+
+    // Bit width
+    uint32_t width_;
+
+    // Encoded name (needed during VCD generation)
+    string encoded_name_;
+
+    // Static count of all signals
+    inline static int signal_count_ = 0;
+
+public:
+    
+    // Ctors
+    Signal() = delete;
+
+    Signal(string name, uint32_t width) 
+    : name_(name), width_(width) {  
+
+        encoded_name_ =  encode_signal_name(signal_count_++);
+        #ifdef VCDGEN_DEBUG
+            cout << "Init Signal " << name_ << " Encoded Name " << encoded_name_ << endl;
+        #endif
+    }
+
+    // Inserting into tick-data
+    void value_at( int64_t time, int32_t value){
+       this->value_at(make_tuple(time, value));
+    }
+
+    // Inserting into tick-data
+    void value_at( tuple<uint64_t, uint32_t> tick_data ){
+        TickData& data = get_tick_data();
+        data.append(tick_data, this);
+    }
+
+    // Inserting into tick-data
+    void value_at( vector<tuple<uint64_t, uint32_t>> tick_data ){
+        TickData& data = get_tick_data();
+        data.append(tick_data, this);
+    }
+
+    // Getters and Setters
+    uint32_t get_width() const{ return width_; }
+
+    string get_name() const{ return name_; }
+
+    string get_encoded_name() const{ return encoded_name_; }
+
+    void set_encoded_name(string name){
+        encoded_name_ = name;
+    }
+};
+
+// Modules help in organizing signals into groups
+// Modules can hold other modules as sub-modules
+class Module {
+
+    // Name of the module
+    string name_;
+
+    // Signal pointers it holds
+    std::vector<Signal*> signals_;
+
+    // Submodules under this module
+    std::vector<Module*> sub_modules_;
+
+public:
+
+    // Ctors.
+    Module() = default;
+
+    Module(string name) : name_(name) { }
+
+    // Methods
+    void add_submodule(Module* m){
+        sub_modules_.push_back(m);
+    }
+
+    void add_signal(Signal* s){
+        signals_.push_back(s);
+    }
+
+    void add_signal(vector<Signal*> vec_s){
+        signals_.insert(signals_.end(), vec_s.begin(), vec_s.end());
+    }
+
+    // Getters and setters
+    uint32_t get_num_submodules(){ return sub_modules_.size(); }
+
+    string get_name() const{ return name_; }
+
+    const vector<Signal*>& get_signals() { return signals_; }
+
+    const vector<Module*>& get_submodules() { return sub_modules_; }
+};
+
+// Method to convert integer to binary value
+string convert_to_binary(uint32_t value, uint32_t width){
+
+    string sig_val;
+    if( width < 64 ){
+        sig_val = "b" + std::bitset<64>(value).to_string();
+    } else {
+        #ifdef VCDGEN_DEBUG
+            cout << "Max Supported width = 32b";
+        #endif
+        assert(false);
+    }
+
+    return sig_val;
+}
+
+/// Converts from Data Structures to VCD File
+class VcdGenerator{
+
+    string filename_;
+    Module *top_level_module_;
+    string vcd_data_;
+
+    /// VCD Header information
+    void header()
     {
+        vcd_data_ += R"""($date
+    Aug 27, 2021
+$end
+$version
+   VCD generator tool version V0.1
+$end
+$timescale 1ps $end
+)""";
+    }
 
-        /// Final string output
-        std::string final_output;
-        
-        /// File to write the final output (optional)
-        /// If no file name is mentioned - output will be to STDOUT
-        std::string file_name;
-
-        /// Software Version
-        const float version = 0.1f;
-
-        /// Hash table between Signal Names and Symbols used to dump them 
-        std::map<std::string, std::string> signal_symbol_map;
-
-        /// Hash table between signal name and their widths
-        std::map<std::string, uint16_t> signal_width_map;
-
-        /// character used to form the symbols
-        std::array<char, 10> symbol_chars;
-
-        /// index in the symbol table
-        short unsigned int st_idx;
-
-        /// Num repetitions needed to create a unique symbol
-        size_t st_repeats;
-
-        /// Next symbol to be used
-        std::string next_symbol;
-
-        /// current module name (includes the super module names)
-        ///
-        /// Example :
-        /// If the current module hierarchy has the structure :
-        /// MAIN module
-        /// |-- SUB_COMP_1
-        ///     |-- SUB_SUB_COMP_1 
-        /// current_module_name = MAIN_SUB_COMP_1_SUB_SUB_COMP_1
-        std::string current_module_name;
-
-        // Hierarchy of the current module
-        std::vector<std::string> module_hierarchy;
-
-        /// VCD Header information
-        void call_header()
-        {
-            final_output += "$date\n";
-            final_output += "\tMay 25, 2020\n";
-            final_output += "$end\n";
-            final_output += "$version\n";
-            final_output += "   VCD generator tool version " + std::to_string(version) + "\n";
-            final_output += "$end\n";
-            final_output += "$timescale 1ps $end\n";
+    void generate_module_info(Module* module){
+        vcd_data_ += "$scope module " + module->get_name() + " $end\n";
+        for( auto signal : module->get_signals() ){
+            vcd_data_ += "$var wire " + to_string(signal->get_width()) + " " + 
+                         signal->get_encoded_name() + " " + signal->get_name() + 
+                         " $end\n";
         }
 
-        /// Updates what symbol to use for the next Signal
-        ///
-        /// Ensure that the it will be a unique symbol name
-        void update_next_symbol()
-        {
-            if( st_idx == symbol_chars.size() )
-            {
-                st_idx = 0;
-                ++st_repeats;
-            }
+        //if( module->get_num_submodules() > 0){
+        //    vector<Module*> &sub_mods = module->get_submodules();
+        //    Module* m = sub_mods[0];
+        //    sub_mods.erase(sub_mods.begin());
+        //    generate_module_info(m);
+        //}
 
-            next_symbol = "";
-
-            for( size_t cnt = 0; cnt < st_repeats; cnt++)
-            {
-                next_symbol += symbol_chars[st_idx];    
-            }
-            ++st_idx;
-        }
-
-        /// Converts the current module name to a string
-        ///
-        /// This name also includes the parent module names
-        /// Example :
-        /// If the current module hierarchy has the structure :
-        /// MAIN module
-        /// |-- SUB_COMP_1
-        ///     |-- SUB_SUB_COMP_1 
-        /// current_module_name = MAIN_SUB_COMP_1_SUB_SUB_COMP_1
-        std::string get_current_module_name()
-        {
-            current_module_name = "";
-
-            for(const auto &s : module_hierarchy)
-            {
-                current_module_name += s + "_";
-            }
-
-            return current_module_name;
-        }
-
-        /// Adds an entry to the signal_symbol_map
-        void assign_symbol(std::string signal_name, uint16_t width)
-        {
-            signal_name = get_current_module_name() + signal_name;
-
-            if ( signal_symbol_map.count(signal_name) == 0 ) {
-
-                signal_symbol_map[signal_name] = next_symbol;
-                signal_width_map[signal_name] = width;
-
-                // This makes ready the next symbol to use
-                update_next_symbol();
-            } else {
-                std::cout << "ERROR : Signal already Registerd" << std::endl;
-                exit(0);
-            }
-        }
-
-        void list_signals()
-        {
-            for( const auto& kv_pair : signal_width_map) 
-            {
-                std::cout << "SIGNAL : " << kv_pair.first << " ; WIDTH : " << kv_pair.second << "\n";
-            }
-        }
-
-
-    public :
-
-        /// Default constructor
-        VcdGenerator() 
-            : st_idx(0)
-            , st_repeats(1)
-        {
-            call_header();
-            symbol_chars = {'!', '@', '#', '$', '%', '^', '&', '*', '(', ')'};
-            update_next_symbol();
-        }
-
-        VcdGenerator(std::string filename)
-            : VcdGenerator()
-        {
-            file_name = filename; 
-        }
-
-        void set_filename(std::string filename) 
-        {
-            file_name = filename;
+        for( auto m : module->get_submodules() ){
+            generate_module_info(m);
         } 
+        
+        vcd_data_ += "$upscope $end\n";
+    }
 
-        /// Adds a module to the current hierarchy (declaration)
-        ///
-        /// @note : Sub components / wires can be declared only within a module
-        /// @param module_name Name of the module
-        void start_module(std::string module_name)
-        {
-            final_output += "$scope module " + module_name + " $end\n";
-            module_hierarchy.push_back(module_name);
-        }
+    void generate_hierarchy_info(){
+        generate_module_info(top_level_module_);
+    }
 
-        /// Signifies end of module declaration
-        void end_module()
-        {
-            final_output += "$upscope $end\n";
-            module_hierarchy.pop_back();
-        }
+    void generate_tick_data(){
+        TickData &tick_data = get_tick_data();
+        
+        auto data = tick_data.get_data();
 
-        /// Signifies end of all module declarations
-        void end_all_module_definitions()
-        {
-            final_output += "$enddefinitions $end\n";
-        }
+        sort(data.begin(), data.end());
 
-        /// Adds a signal to the current module
-        ///
-        /// @param signal_name Name of the signal being added
-        /// @param width Width of the signal (#bits) being added
-        void add_signal(std::string signal_name, uint16_t width)
-        {
-            assign_symbol(signal_name, width);
-            final_output += "$var wire " + std::to_string(width) + " " \
-                            + signal_symbol_map[current_module_name + signal_name]  \
-                            +  " " + signal_name + " $end\n";
-        }
+        uint64_t tick_prev = -1;
+        for( auto& d : data ) {
 
-        /// Dump value of a signal
-        ///
-        /// @attention : Name of the signal should include names of PARENT MODULES as well.
-        /// @param signal_name FULL Name of the signal (including full module path)
-        /// @param value Value of the signal in string format. Multi-bit values, should be passed
-        /// as a string of binary bits
-        /// Example :
-        /// If the signal to dump (data_valid) is under the following hierarchy :
-        /// MAIN module
-        /// |-- SUB_COMP_1
-        ///     |-- SUB_SUB_COMP_1 
-        ///      |-- data_valid
-        /// signal_name = MAIN_SUB_COMP_1_SUB_SUB_COMP_1_data_valid
-        /// @warning It is the responsibility of the sender to ensure full path is mentioned
-        void dump_signal(std::string signal_name, std::string value)
-        {
-            if ( signal_symbol_map.count(signal_name) == 0 ) {
-                std::cout << "ERROR : Unregistered Signal name : " << signal_name 
-                          << "\nExiting..." << std::endl;
-                list_signals();
-                exit(0);
-            } else {
-                if (signal_width_map[signal_name] == 1 ) {
-                    final_output += value + signal_symbol_map[signal_name] + "\n";
-                } else {
-                    final_output += "b" + value + " " + signal_symbol_map[signal_name] + "\n";
-                }
+            #ifdef VCDGEN_DEBUG
+                cout << "Time : " << get<0>(d) << "\t| Value : " << get<1>(d) << "\t| Name : " 
+                     << get<2>(d)->get_name() << "\t| Symbol : " << get<2>(d)->get_encoded_name() 
+                     << endl;
+            #endif
+
+            uint64_t tick  = get<0>(d); 
+            uint32_t value = get<1>(d);
+            const Signal* signal  = get<2>(d); 
+            uint32_t width = signal->get_width();
+
+            if( tick_prev != tick ){
+                vcd_data_ += "#" + to_string(tick) + "\n";
             }
-        }
-
-        /// Dumps the time specified in clocks
-        void dump_time(size_t clock)
-        {
-            final_output += "#" + std::to_string(clock) + "\n";
-        }
-
-        /// Initializes the inputs
-        /// 
-        /// Since this Class will likely be a singleton
-        /// This method provides a way to Reset the members.
-        void Init()
-        {
-            file_name = "";
-            final_output = "";
-            signal_symbol_map.clear();
-            signal_width_map.clear();
-
-            st_idx = 0;
-            st_repeats = 1;
-            call_header();
-            update_next_symbol();
-        }
-
-        /// Prints to the console the constructed vcd (until this point)
-        void dump_vcd()
-        {
-            if( file_name.length() > 0 ) {
-                std::ofstream file;
-                file.open(file_name);
-                std::cout << "Writing To file : " << file_name << "\n";
-                file << final_output;
-                file.close();
+            if( width > 1 ){ 
+                vcd_data_ += convert_to_binary(value, width) + " " ;
             } else {
-                std::cout << final_output;
+                vcd_data_ += to_string(value);
             }
+            vcd_data_ += signal->get_encoded_name() + "\n";
+            tick_prev = tick;
         }
-    };
+    }
+
+public:
+
+    VcdGenerator() = default;
+    VcdGenerator(string name) : filename_(name) { }
+    
+    void set_top_level_module(Module *m){
+        top_level_module_ = m;
+    }
+
+    void operator()(){
+        if( filename_.length() > 0 ) {
+
+
+            // Time for all the magic :
+            // Step 1 : Generate Header
+            // Step 3 : Generate Module Hierarchies
+            // Step 4 : Generate Tick Data Info for each signal
+
+            header();
+            generate_hierarchy_info();
+            generate_tick_data();
+
+            std::ofstream file;
+            file.open(filename_);
+            cout << "Writing To file : " << filename_ << "\n";
+            file << vcd_data_;
+            file.close();
+        } else {
+            cout << "ERROR : ILLEGAL VCD FILENAME" << "\n";
+        }
+    }
+};
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
 } // End namespace VcdGen
