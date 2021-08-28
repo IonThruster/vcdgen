@@ -16,7 +16,7 @@ Note gtkwave is an Open-Source waveform viewer, which should be downloaded separ
 
 ### Dependencies
 * cmake 3.10.0+
-* c++ compiler with C++11 support
+* c++ compiler with C++17 support
 * gtkwave / a similar GUI program to view waveforms
 
 ### Tested on
